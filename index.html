@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>中1理科 光の反射シミュレーション</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      font-family: 'M PLUS Rounded 1c', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* レーザー光のグローエフェクト */
+    .laser-glow-in {
+      filter: drop-shadow(0 0 8px #ff2a55) drop-shadow(0 0 16px #ff0033);
+    }
+    .laser-glow-out {
+      filter: drop-shadow(0 0 8px #ff2a55) drop-shadow(0 0 16px #ff0033);
+    }
+
+    /* 鏡の反射グラデーション */
+    .mirror-surface {
+      background: linear-gradient(90deg, #94a3b8 0%, #e2e8f0 25%, #ffffff 50%, #cbd5e1 75%, #94a3b8 100%);
+    }
+
+    /* カスタムスライダー（iPadで触りやすい特大サイズ） */
+    input[type=range].big-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 18px;
+      background: #334155;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type=range].big-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #f43f5e;
+      border: 4px solid #ffffff;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(244, 63, 94, 0.6);
+    }
+
+    /* ボタンのバウンス効果 */
+    .btn-push {
+      transition: transform 0.1s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .btn-push:active {
+      transform: scale(0.96);
+    }
+
+    /* ドラッグハンドルのパルスアニメーション */
+    @keyframes pulse-ring {
+      0% { r: 28px; opacity: 0.6; }
+      70% { r: 44px; opacity: 0; }
+      100% { r: 44px; opacity: 0; }
+    }
+    .drag-pulse {
+      animation: pulse-ring 2s infinite;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between p-3 lg:p-4 select-none">
+
+  <!-- 上部ヘッダー -->
+  <header class="flex items-center justify-between bg-slate-800/90 border border-slate-700 rounded-2xl px-5 py-2.5 shadow-lg shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-rose-500 flex items-center justify-center shadow-md shadow-rose-500/30">
+        <!-- 光アイコン -->
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364 6.364l-1.414-1.414M6.05 6.05L4.636 4.636m12.728 0l-1.414 1.414M6.05 17.95l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-xl lg:text-2xl font-extrabold tracking-wide text-white leading-tight">
+          光の反射のきまり <span class="text-amber-400 text-lg lg:text-xl ml-1">〜入射角と反射角〜</span>
+        </h1>
+      </div>
+    </div>
+
+    <!-- ワンポイント解説バナー -->
+    <div id="guideMessage" class="bg-slate-900/90 border-2 border-amber-400/70 rounded-xl px-4 py-1.5 text-base lg:text-lg font-bold text-amber-200 flex items-center gap-2">
+      <span>💡</span>
+      <span id="guideText">レーザーポインターを動かすか、右のボタンで角度を変えてみよう！</span>
+    </div>
+  </header>
+
+  <!-- メインエリア（左：実験キャンバス / 右：コントロールパネル） -->
+  <main class="flex-1 flex gap-4 my-2.5 min-h-0 overflow-hidden">
+
+    <!-- 左側：実験ステージ（SVGキャンバス） -->
+    <section class="flex-[1.65] bg-slate-900 border-2 border-slate-700 rounded-3xl relative flex flex-col items-center justify-center overflow-hidden shadow-2xl">
+      
+      <!-- 左上：凡例表示 -->
+      <div class="absolute top-4 left-4 bg-slate-800/90 backdrop-blur border border-slate-600 rounded-2xl p-3 flex flex-col gap-2 z-10 shadow-md">
+        <div class="flex items-center gap-2.5">
+          <span class="w-6 h-2 rounded-full bg-rose-500 inline-block shadow-[0_0_8px_#f43f5e]"></span>
+          <span class="text-base lg:text-lg font-bold text-rose-300">入射光（進む光）</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <span class="w-6 h-2 rounded-full bg-amber-400 inline-block shadow-[0_0_8px_#fbbf24]"></span>
+          <span class="text-base lg:text-lg font-bold text-amber-300">反射光（はね返る光）</span>
+        </div>
+      </div>
+
+      <!-- 右上：光の発射＆速度コントロール -->
+      <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <button id="btnSlow" onclick="toggleSlowMotion()" class="btn-push bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 text-slate-200 font-bold px-4 py-2.5 rounded-2xl text-base lg:text-lg flex items-center gap-2 shadow-md">
+          <span id="slowIcon">🐢</span>
+          <span id="slowLabel">ゆっくり見る：OFF</span>
+        </button>
+        <button onclick="replayBeamAnimation()" class="btn-push bg-rose-600 hover:bg-rose-500 border-2 border-rose-400 text-white font-extrabold px-5 py-2.5 rounded-2xl text-base lg:text-lg flex items-center gap-2 shadow-lg shadow-rose-600/40">
+          <span>▶</span>
+          <span>光を発射！</span>
+        </button>
+      </div>
+
+      <!-- インタラクティブSVGキャンバス -->
+      <!-- 中心（鏡への入射点）を (500, 520) に設定 -->
+      <svg id="simSvg" viewBox="0 0 1000 640" class="w-full h-full touch-none">
+        <defs>
+          <!-- 鏡のグラデーション -->
+          <linearGradient id="mirrorGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#64748b" />
+            <stop offset="20%" stop-color="#cbd5e1" />
+            <stop offset="50%" stop-color="#f8fafc" />
+            <stop offset="80%" stop-color="#94a3b8" />
+            <stop offset="100%" stop-color="#64748b" />
+          </linearGradient>
+
+          <!-- 入射角・反射角の扇形グラデーション -->
+          <radialGradient id="incAngleGrad" cx="50%" cy="100%" r="100%">
+            <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.45" />
+            <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.2" />
+          </radialGradient>
+          <radialGradient id="refAngleGrad" cx="50%" cy="100%" r="100%">
+            <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.45" />
+            <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.2" />
+          </radialGradient>
+
+          <!-- レーザーポインター本体のグラデーション -->
+          <linearGradient id="pointerBody" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e2e8f0" />
+            <stop offset="50%" stop-color="#94a3b8" />
+            <stop offset="100%" stop-color="#475569" />
+          </linearGradient>
+
+          <!-- 光のグローフィルタ -->
+          <filter id="glowRed" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glowYellow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- 背景グリッド（薄い方眼） -->
+        <g stroke="#1e293b" stroke-width="1">
+          <line x1="0" y1="120" x2="1000" y2="120" />
+          <line x1="0" y1="220" x2="1000" y2="220" />
+          <line x1="0" y1="320" x2="1000" y2="320" />
+          <line x1="0" y1="420" x2="1000" y2="420" />
+          <line x1="100" y1="0" x2="100" y2="520" />
+          <line x1="200" y1="0" x2="200" y2="520" />
+          <line x1="300" y1="0" x2="300" y2="520" />
+          <line x1="400" y1="0" x2="400" y2="520" />
+          <line x1="500" y1="0" x2="500" y2="520" />
+          <line x1="600" y1="0" x2="600" y2="520" />
+          <line x1="700" y1="0" x2="700" y2="520" />
+          <line x1="800" y1="0" x2="800" y2="520" />
+          <line x1="900" y1="0" x2="900" y2="520" />
+        </g>
+
+        <!-- 10°ごとのガイドドット（ドラッグしやすくする薄い目印） -->
+        <g id="snapDotsGroup" opacity="0.35"></g>
+
+        <!-- ================= 分度器レイヤー（ON/OFF） ================= -->
+        <g id="protractorLayer" class="transition-opacity duration-300" style="opacity: 0; pointer-events: none;">
+          <!-- 半透明の分度器ベース -->
+          <path d="M 180 520 A 320 320 0 0 1 820 520 Z" fill="#1e293b" fill-opacity="0.82" stroke="#38bdf8" stroke-width="3" />
+          <path d="M 250 520 A 250 250 0 0 1 750 520 Z" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="6,6" opacity="0.6" />
+          <path d="M 420 520 A 80 80 0 0 1 580 520 Z" fill="#0f172a" fill-opacity="0.6" stroke="#38bdf8" stroke-width="1.5" />
+          <!-- 目盛り線と数字（JSで生成） -->
+          <g id="protractorTicks"></g>
+        </g>
+
+        <!-- ================= 角度の扇形＆数値レイヤー（ON/OFF） ================= -->
+        <g id="angleValueLayer" class="transition-opacity duration-300" style="opacity: 0; pointer-events: none;">
+          <!-- 入射角の扇形 -->
+          <path id="incidentArc" d="" fill="url(#incAngleGrad)" stroke="#fb7185" stroke-width="3" />
+          <!-- 反射角の扇形 -->
+          <path id="reflectionArc" d="" fill="url(#refAngleGrad)" stroke="#fcd34d" stroke-width="3" />
+
+          <!-- 入射角ラベルボックス -->
+          <g id="incidentLabelGroup">
+            <rect x="-95" y="-32" width="190" height="64" rx="16" fill="#881337" fill-opacity="0.95" stroke="#fb7185" stroke-width="3" />
+            <text x="0" y="-6" text-anchor="middle" fill="#fecdd3" font-size="19" font-weight="800">入射角</text>
+            <text id="incidentAngleText" x="0" y="22" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800">50°</text>
+          </g>
+
+          <!-- 反射角ラベルボックス -->
+          <g id="reflectionLabelGroup">
+            <rect x="-95" y="-32" width="190" height="64" rx="16" fill="#78350f" fill-opacity="0.95" stroke="#fcd34d" stroke-width="3" />
+            <text x="0" y="-6" text-anchor="middle" fill="#fde68a" font-size="19" font-weight="800">反射角</text>
+            <text id="reflectionAngleText" x="0" y="22" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800">50°</text>
+          </g>
+
+          <!-- 0°のときの特別ラベル -->
+          <g id="zeroDegreeBadge" style="display: none;" transform="translate(500, 290)">
+            <rect x="-190" y="-42" width="380" height="84" rx="20" fill="#1e293b" stroke="#38bdf8" stroke-width="4" />
+            <text x="0" y="-6" text-anchor="middle" fill="#38bdf8" font-size="22" font-weight="800">鏡に垂直に当たるとき</text>
+            <text x="0" y="28" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800">入射角 0° ＝ 反射角 0°</text>
+          </g>
+        </g>
+
+        <!-- ================= 鏡に垂直な線（法線）レイヤー（ON/OFF） ================= -->
+        <g id="normalLineLayer" class="transition-opacity duration-300" style="opacity: 0; pointer-events: none;">
+          <!-- 直角マーク ∟ -->
+          <polyline points="500,492 528,492 528,520" fill="none" stroke="#38bdf8" stroke-width="4" />
+          <text x="558" y="505" fill="#38bdf8" font-size="20" font-weight="800">90°(垂直)</text>
+
+          <!-- 垂直な点線（法線） -->
+          <line x1="500" y1="520" x2="500" y2="65" stroke="#38bdf8" stroke-width="5" stroke-dasharray="14,10" stroke-linecap="round" />
+
+          <!-- 上部ラベル -->
+          <g transform="translate(500, 42)">
+            <rect x="-125" y="-22" width="250" height="40" rx="12" fill="#0369a1" stroke="#38bdf8" stroke-width="2.5" />
+            <text x="0" y="5" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="800">鏡に垂直な線（法線）</text>
+          </g>
+        </g>
+
+        <!-- ================= 鏡（ミラー）本体 ================= -->
+        <g id="mirrorGroup">
+          <!-- 鏡の裏側の斜線ハッチング（理科の図記号風） -->
+          <rect x="110" y="520" width="780" height="18" fill="url(#mirrorGrad)" stroke="#e2e8f0" stroke-width="2" rx="4" />
+          <g stroke="#64748b" stroke-width="3" opacity="0.7">
+            <line x1="140" y1="538" x2="125" y2="560" />
+            <line x1="190" y1="538" x2="175" y2="560" />
+            <line x1="240" y1="538" x2="225" y2="560" />
+            <line x1="290" y1="538" x2="275" y2="560" />
+            <line x1="340" y1="538" x2="325" y2="560" />
+            <line x1="390" y1="538" x2="375" y2="560" />
+            <line x1="440" y1="538" x2="425" y2="560" />
+            <line x1="490" y1="538" x2="475" y2="560" />
+            <line x1="540" y1="538" x2="525" y2="560" />
+            <line x1="590" y1="538" x2="575" y2="560" />
+            <line x1="640" y1="538" x2="625" y2="560" />
+            <line x1="690" y1="538" x2="675" y2="560" />
+            <line x1="740" y1="538" x2="725" y2="560" />
+            <line x1="790" y1="538" x2="775" y2="560" />
+            <line x1="840" y1="538" x2="825" y2="560" />
+          </g>
+          <text x="500" y="595" text-anchor="middle" fill="#cbd5e1" font-size="26" font-weight="800" letter-spacing="8">かがみ（鏡）</text>
+        </g>
+
+        <!-- ================= 光線（入射光＆反射光）レイヤー ================= -->
+        <g id="laserBeamsGroup">
+          <!-- 入射光（赤いレーザー） -->
+          <line id="incidentBeamGlow" x1="200" y1="200" x2="500" y2="520" stroke="#f43f5e" stroke-width="12" stroke-linecap="round" opacity="0.4" filter="url(#glowRed)" />
+          <line id="incidentBeamCore" x1="200" y1="200" x2="500" y2="520" stroke="#fda4af" stroke-width="5" stroke-linecap="round" />
+
+          <!-- 反射光（黄色〜オレンジのレーザー：入射光と区別しやすく視認性抜群） -->
+          <line id="reflectionBeamGlow" x1="500" y1="520" x2="800" y2="200" stroke="#f59e0b" stroke-width="12" stroke-linecap="round" opacity="0.45" filter="url(#glowYellow)" />
+          <line id="reflectionBeamCore" x1="500" y1="520" x2="800" y2="200" stroke="#fef08a" stroke-width="5" stroke-linecap="round" />
+
+          <!-- 光が進む向きを示す動く矢印・光の粒グループ -->
+          <g id="movingParticlesGroup"></g>
+
+          <!-- 入射点（鏡に当たる中心点）のキラッと光るエフェクト -->
+          <circle id="hitPointGlow" cx="500" cy="520" r="12" fill="#ffffff" filter="url(#glowYellow)" />
+          <circle cx="500" cy="520" r="6" fill="#ffffff" />
+        </g>
+
+        <!-- ================= レーザーポインター（ドラッグ操作可能） ================= -->
+        <g id="laserPointerGroup" class="cursor-grab active:cursor-grabbing">
+          <!-- タッチ領域を広げる透明サークル -->
+          <circle cx="0" cy="0" r="60" fill="transparent" />
+          <!-- パルスリング -->
+          <circle cx="0" cy="0" r="30" fill="none" stroke="#f43f5e" stroke-width="3" class="drag-pulse" />
+          
+          <!-- レーザーポインターのイラスト（中心(0,0)から鏡の方向へ向く） -->
+          <g id="pointerGraphic">
+            <!-- 本体筒 -->
+            <rect x="-65" y="-18" width="95" height="36" rx="10" fill="url(#pointerBody)" stroke="#f8fafc" stroke-width="3" />
+            <!-- グリップ模様 -->
+            <line x1="-40" y1="-16" x2="-40" y2="16" stroke="#334155" stroke-width="4" />
+            <line x1="-28" y1="-16" x2="-28" y2="16" stroke="#334155" stroke-width="4" />
+            <line x1="-16" y1="-16" x2="-16" y2="16" stroke="#334155" stroke-width="4" />
+            <!-- 赤いスイッチボタン -->
+            <circle cx="0" cy="0" r="8" fill="#f43f5e" stroke="#ffffff" stroke-width="2" />
+            <!-- 先端ノズル -->
+            <path d="M 30 -12 L 46 -7 L 46 7 L 30 12 Z" fill="#dc2626" stroke="#ffffff" stroke-width="2" />
+          </g>
+        </g>
+      </svg>
+
+      <!-- 下部フローティングヒント -->
+      <div class="absolute bottom-3 left-4 bg-slate-800/85 border border-slate-600 px-4 py-1.5 rounded-xl text-sm lg:text-base text-slate-300 font-bold">
+        👆 画面のレーザーポインターを直接ゆびで動かしても角度を変えられるよ！
+      </div>
+    </section>
+
+    <!-- 右側：操作パネル（iPadで押しやすい特大UI） -->
+    <aside class="flex-1 flex flex-col justify-between gap-3 min-w-[340px] max-w-[440px]">
+
+      <!-- パネル1：角度の調整（0°〜80°、10°単位） -->
+      <div class="bg-slate-800 border-2 border-slate-700 rounded-3xl p-4 shadow-xl flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg lg:text-xl font-extrabold text-white flex items-center gap-2">
+            <span class="bg-rose-500 text-white w-7 h-7 rounded-lg inline-flex items-center justify-center text-base">1</span>
+            光を当てる角度（10°きざみ）
+          </h2>
+          <span id="currentSettingBadge" class="bg-slate-900 border border-slate-600 px-3 py-1 rounded-xl text-rose-400 font-extrabold text-lg">
+            現在：50°
+          </span>
+        </div>
+
+        <!-- スライダー -->
+        <div class="px-2 py-1">
+          <input id="angleSlider" type="range" min="0" max="80" step="10" value="50" class="big-slider" oninput="setAngle(parseInt(this.value), true)">
+          <div class="flex justify-between text-xs lg:text-sm font-bold text-slate-400 mt-1.5 px-1">
+            <span>0°(垂直)</span>
+            <span>20°</span>
+            <span>40°</span>
+            <span>60°</span>
+            <span>80°(ななめ)</span>
+          </div>
+        </div>
+
+        <!-- 10°単位のダイレクト選択ボタン（3×3グリッドで押しやすい） -->
+        <div class="grid grid-cols-5 gap-2" id="angleButtonsGrid">
+          <!-- JSで 0°〜80° ボタンを生成 -->
+        </div>
+      </div>
+
+      <!-- パネル2：段階的に理解する表示スイッチ -->
+      <div class="bg-slate-800 border-2 border-slate-700 rounded-3xl p-4 shadow-xl flex-1 flex flex-col justify-between gap-2.5">
+        <h2 class="text-lg lg:text-xl font-extrabold text-white flex items-center gap-2">
+          <span class="bg-sky-500 text-white w-7 h-7 rounded-lg inline-flex items-center justify-center text-base">2</span>
+          調べるツールを出してみよう
+        </h2>
+
+        <!-- スイッチ1：鏡に垂直な線（法線） -->
+        <button id="toggleNormalBtn" onclick="toggleNormalLine()" class="btn-push w-full bg-slate-900 hover:bg-slate-850 border-2 border-slate-600 rounded-2xl p-3 flex items-center justify-between text-left transition-all">
+          <div class="flex items-center gap-3">
+            <div id="normalIconBox" class="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center text-2xl font-extrabold text-sky-400">
+              ⊥
+            </div>
+            <div>
+              <div class="text-base lg:text-lg font-extrabold text-white">鏡に垂直な線（法線）</div>
+              <div class="text-xs lg:text-sm font-bold text-slate-400">まず鏡に対して90°の線を引こう</div>
+            </div>
+          </div>
+          <div id="normalStatusBadge" class="px-4 py-2 rounded-xl font-extrabold text-base bg-slate-700 text-slate-300">
+            OFF
+          </div>
+        </button>
+
+        <!-- スイッチ2：分度器 -->
+        <button id="toggleProtractorBtn" onclick="toggleProtractor()" class="btn-push w-full bg-slate-900 hover:bg-slate-850 border-2 border-slate-600 rounded-2xl p-3 flex items-center justify-between text-left transition-all">
+          <div class="flex items-center gap-3">
+            <div id="protractorIconBox" class="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center text-2xl">
+              📐
+            </div>
+            <div>
+              <div class="text-base lg:text-lg font-extrabold text-white">分度器をおく</div>
+              <div class="text-xs lg:text-sm font-bold text-slate-400">垂直な線(0°)から角度をはかろう</div>
+            </div>
+          </div>
+          <div id="protractorStatusBadge" class="px-4 py-2 rounded-xl font-extrabold text-base bg-slate-700 text-slate-300">
+            OFF
+          </div>
+        </button>
+
+        <!-- スイッチ3：入射角・反射角の表示 -->
+        <button id="toggleAnglesBtn" onclick="toggleAnglesDisplay()" class="btn-push w-full bg-slate-900 hover:bg-slate-850 border-2 border-slate-600 rounded-2xl p-3 flex items-center justify-between text-left transition-all">
+          <div class="flex items-center gap-3">
+            <div id="anglesIconBox" class="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center text-2xl">
+              ✨
+            </div>
+            <div>
+              <div class="text-base lg:text-lg font-extrabold text-white">入射角・反射角を表示</div>
+              <div class="text-xs lg:text-sm font-bold text-slate-400">2つの角度の大きさをくらべよう</div>
+            </div>
+          </div>
+          <div id="anglesStatusBadge" class="px-4 py-2 rounded-xl font-extrabold text-base bg-slate-700 text-slate-300">
+            OFF
+          </div>
+        </button>
+      </div>
+
+      <!-- パネル3：まとめ・法則ボックス -->
+      <div id="summaryCard" class="bg-gradient-to-r from-slate-800 to-slate-800 border-2 border-slate-700 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-between">
+        <div class="text-sm lg:text-base font-bold text-slate-300">
+          ⚠️ <span class="text-sky-300 font-extrabold">鏡に垂直な線</span>と光との間の角をはかるよ！
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <script>
+    // ==========================================
+    // 定数と状態管理
+    // ==========================================
+    const ORIGIN_X = 500;       // 鏡の入射点X座標
+    const ORIGIN_Y = 520;       // 鏡の入射点Y座標
+    const POINTER_RADIUS = 380; // 入射点からレーザーポインターまでの距離
+    const BEAM_RADIUS = 430;    // 反射光の長さ
+
+    let state = {
+      angle: 50,                // 現在の入射角（0〜80、10刻み）
+      showNormal: false,        // 鏡に垂直な線（法線）の表示
+      showProtractor: false,    // 分度器の表示
+      showAngles: false,        // 入射角・反射角の数値表示
+      slowMotion: false,        // ゆっくりアニメーションモード
+      beamProgress: 1.0,        // 光の発射アニメーション進行度 (0.0 -> 1.0: 入射光, 1.0 -> 2.0: 反射光)
+      isAnimatingBeam: false,   // 発射アニメーション中か
+      particleOffset: 0         // 定常時の光の粒アニメーションオフセット
+    };
+
+    // ==========================================
+    // 初期化処理
+    // ==========================================
+    window.onload = function () {
+      initAngleButtons();
+      initProtractorGraphics();
+      initSnapDots();
+      initDragEvents();
+      updateUI();
+      replayBeamAnimation();
+      requestAnimationFrame(animationLoop);
+    };
+
+    // 0°〜80°の角度ボタンを生成
+    function initAngleButtons() {
+      const grid = document.getElementById('angleButtonsGrid');
+      grid.innerHTML = '';
+      for (let a = 0; a <= 80; a += 10) {
+        const btn = document.createElement('button');
+        btn.id = `angleBtn-${a}`;
+        btn.className = 'btn-push py-2.5 rounded-xl font-extrabold text-base lg:text-lg border-2 transition-all';
+        btn.textContent = `${a}°`;
+        btn.onclick = () => setAngle(a, true);
+        grid.appendChild(btn);
+      }
+    }
+
+    // 10°ごとのスナップ位置の目印ドットをキャンバスに描画
+    function initSnapDots() {
+      const group = document.getElementById('snapDotsGroup');
+      for (let a = 0; a <= 80; a += 10) {
+        const rad = (a * Math.PI) / 180;
+        const x = ORIGIN_X - POINTER_RADIUS * Math.sin(rad);
+        const y = ORIGIN_Y - POINTER_RADIUS * Math.cos(rad);
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', '5');
+        circle.setAttribute('fill', '#64748b');
+        group.appendChild(circle);
+      }
+    }
+
+    // 分度器の目盛り（法線=0°から左右に0°〜90°）を生成
+    function initProtractorGraphics() {
+      const ticksGroup = document.getElementById('protractorTicks');
+      const outerR = 320;
+      const labelR = 282;
+
+      // 左右両側（-90°〜+90°）の目盛りを描画
+      for (let deg = -90; deg <= 90; deg += 5) {
+        const absDeg = Math.abs(deg);
+        const rad = (deg * Math.PI) / 180;
+        const isMajor = absDeg % 10 === 0;
+        const innerR = isMajor ? outerR - 18 : outerR - 10;
+
+        const x1 = ORIGIN_X + outerR * Math.sin(rad);
+        const y1 = ORIGIN_Y - outerR * Math.cos(rad);
+        const x2 = ORIGIN_X + innerR * Math.sin(rad);
+        const y2 = ORIGIN_Y - innerR * Math.cos(rad);
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+        line.setAttribute('stroke', absDeg === 0 ? '#38bdf8' : (isMajor ? '#e2e8f0' : '#64748b'));
+        line.setAttribute('stroke-width', absDeg === 0 ? '4' : (isMajor ? '2.5' : '1.5'));
+        ticksGroup.appendChild(line);
+
+        // 10°単位の数字ラベルを描画
+        if (isMajor && absDeg <= 80) {
+          const lx = ORIGIN_X + labelR * Math.sin(rad);
+          const ly = ORIGIN_Y - labelR * Math.cos(rad);
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', lx);
+          text.setAttribute('y', ly + 7);
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('fill', absDeg === 0 ? '#38bdf8' : (deg < 0 ? '#fda4af' : '#fde68a'));
+          text.setAttribute('font-size', absDeg === 0 ? '24' : '20');
+          text.setAttribute('font-weight', '800');
+          text.textContent = `${absDeg}`;
+          ticksGroup.appendChild(text);
+        }
+      }
+    }
+
+    // ==========================================
+    // 角度の変更とアニメーション制御
+    // ==========================================
+    function setAngle(newAngle, animateBeam = true) {
+      const clamped = Math.max(0, Math.min(80, Math.round(newAngle / 10) * 10));
+      const changed = state.angle !== clamped;
+      state.angle = clamped;
+
+      document.getElementById('angleSlider').value = clamped;
+      updateUI();
+
+      if (animateBeam && changed) {
+        replayBeamAnimation();
+      }
+    }
+
+    // 光がレーザーポインターから発射されて鏡で跳ね返るアニメーションを開始
+    function replayBeamAnimation() {
+      state.beamProgress = 0.0;
+      state.isAnimatingBeam = true;
+    }
+
+    // ゆっくり見るモードの切り替え
+    function toggleSlowMotion() {
+      state.slowMotion = !state.slowMotion;
+      const btn = document.getElementById('btnSlow');
+      const label = document.getElementById('slowLabel');
+
+      if (state.slowMotion) {
+        btn.className = 'btn-push bg-amber-500 hover:bg-amber-400 border-2 border-amber-200 text-slate-950 font-extrabold px-4 py-2.5 rounded-2xl text-base lg:text-lg flex items-center gap-2 shadow-lg';
+        label.textContent = 'ゆっくり見る：ON';
+      } else {
+        btn.className = 'btn-push bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 text-slate-200 font-bold px-4 py-2.5 rounded-2xl text-base lg:text-lg flex items-center gap-2 shadow-md';
+        label.textContent = 'ゆっくり見る：OFF';
+      }
+      replayBeamAnimation();
+    }
+
+    // ==========================================
+    // 表示トグルスイッチ制御
+    // ==========================================
+    function toggleNormalLine() {
+      state.showNormal = !state.showNormal;
+      updateUI();
+    }
+
+    function toggleProtractor() {
+      state.showProtractor = !state.showProtractor;
+      // 分度器を置いたときに法線がまだ出ていなければ、分かりやすさのためガイドメッセージを更新
+      updateUI();
+    }
+
+    function toggleAnglesDisplay() {
+      state.showAngles = !state.showAngles;
+      // 入射角・反射角を表示するとき、基準となる法線も一緒に表示すると生徒が必ず理解できる
+      if (state.showAngles && !state.showNormal) {
+        state.showNormal = true;
+      }
+      updateUI();
+    }
+
+    // ==========================================
+    // 画面・SVG要素の更新
+    // ==========================================
+    function updateUI() {
+      const a = state.angle;
+      const rad = (a * Math.PI) / 180;
+
+      // 現在の設定バッジ更新
+      const badge = document.getElementById('currentSettingBadge');
+      badge.textContent = state.showAngles ? `入射角：${a}°` : `角度：${a}°`;
+
+      // 角度ボタンのハイライト更新
+      for (let deg = 0; deg <= 80; deg += 10) {
+        const btn = document.getElementById(`angleBtn-${deg}`);
+        if (deg === a) {
+          btn.className = 'btn-push py-2.5 rounded-xl font-extrabold text-base lg:text-lg border-2 bg-rose-500 border-white text-white shadow-lg shadow-rose-500/40';
+        } else {
+          btn.className = 'btn-push py-2.5 rounded-xl font-extrabold text-base lg:text-lg border-2 bg-slate-900 border-slate-600 text-slate-300 hover:bg-slate-700';
+        }
+      }
+
+      // レーザーポインターの位置と回転角を計算
+      const pointerX = ORIGIN_X - POINTER_RADIUS * Math.sin(rad);
+      const pointerY = ORIGIN_Y - POINTER_RADIUS * Math.cos(rad);
+      // ポインターの中心から鏡の入射点(ORIGIN_X, ORIGIN_Y)へ向く角度(度)
+      const pointerDeg = 90 - a;
+      const pointerGroup = document.getElementById('laserPointerGroup');
+      pointerGroup.setAttribute('transform', `translate(${pointerX}, ${pointerY}) rotate(${pointerDeg})`);
+
+      // トグルボタン1：法線
+      updateToggleButtonStyle(
+        'toggleNormalBtn', 'normalStatusBadge', 'normalIconBox',
+        state.showNormal, 'border-sky-400 bg-sky-950/50', 'bg-sky-400 text-slate-950'
+      );
+      document.getElementById('normalLineLayer').style.opacity = state.showNormal ? '1' : '0';
+
+      // トグルボタン2：分度器
+      updateToggleButtonStyle(
+        'toggleProtractorBtn', 'protractorStatusBadge', 'protractorIconBox',
+        state.showProtractor, 'border-amber-400 bg-amber-950/40', 'bg-amber-400 text-slate-950'
+      );
+      document.getElementById('protractorLayer').style.opacity = state.showProtractor ? '1' : '0';
+
+      // トグルボタン3：入射角・反射角
+      updateToggleButtonStyle(
+        'toggleAnglesBtn', 'anglesStatusBadge', 'anglesIconBox',
+        state.showAngles, 'border-rose-400 bg-rose-950/50', 'bg-rose-500 text-white'
+      );
+      document.getElementById('angleValueLayer').style.opacity = state.showAngles ? '1' : '0';
+
+      // 入射角・反射角の扇形（アーク）とラベル位置を更新
+      updateAngleArcsAndLabels(a, rad);
+
+      // 上部ガイドメッセージと下部まとめカードの更新
+      updateGuideMessages(a);
+    }
+
+    function updateToggleButtonStyle(btnId, badgeId, iconBoxId, isActive, activeBtnClass, activeBadgeClass) {
+      const btn = document.getElementById(btnId);
+      const badge = document.getElementById(badgeId);
+      const iconBox = document.getElementById(iconBoxId);
+
+      if (isActive) {
+        btn.className = `btn-push w-full border-2 rounded-2xl p-3 flex items-center justify-between text-left transition-all shadow-lg ${activeBtnClass}`;
+        badge.className = `px-4 py-2 rounded-xl font-extrabold text-base shadow ${activeBadgeClass}`;
+        badge.textContent = 'ON';
+        iconBox.classList.replace('bg-slate-700', 'bg-slate-800');
+      } else {
+        btn.className = 'btn-push w-full bg-slate-900 hover:bg-slate-800 border-2 border-slate-600 rounded-2xl p-3 flex items-center justify-between text-left transition-all';
+        badge.className = 'px-4 py-2 rounded-xl font-extrabold text-base bg-slate-700 text-slate-300';
+        badge.textContent = 'OFF';
+      }
+    }
+
+    // 入射角・反射角の扇形パスと数値ボックスの配置計算
+    function updateAngleArcsAndLabels(angle, rad) {
+      const incArc = document.getElementById('incidentArc');
+      const refArc = document.getElementById('reflectionArc');
+      const incLabel = document.getElementById('incidentLabelGroup');
+      const refLabel = document.getElementById('reflectionLabelGroup');
+      const zeroBadge = document.getElementById('zeroDegreeBadge');
+
+      document.getElementById('incidentAngleText').textContent = `${angle}°`;
+      document.getElementById('reflectionAngleText').textContent = `${angle}°`;
+
+      if (angle === 0) {
+        // 0°のときは扇形を隠して特別バッジを表示
+        incArc.setAttribute('d', '');
+        refArc.setAttribute('d', '');
+        incLabel.style.display = 'none';
+        refLabel.style.display = 'none';
+        zeroBadge.style.display = 'block';
+        return;
+      }
+
+      incLabel.style.display = 'block';
+      refLabel.style.display = 'block';
+      zeroBadge.style.display = 'none';
+
+      const arcRadius = 155;
+      // 法線上の点 (500, 520 - arcRadius)
+      const startX = ORIGIN_X;
+      const startY = ORIGIN_Y - arcRadius;
+
+      // 入射光側の円弧終点
+      const incEndX = ORIGIN_X - arcRadius * Math.sin(rad);
+      const incEndY = ORIGIN_Y - arcRadius * Math.cos(rad);
+      incArc.setAttribute(
+        'd',
+        `M ${ORIGIN_X} ${ORIGIN_Y} L ${startX} ${startY} A ${arcRadius} ${arcRadius} 0 0 0 ${incEndX} ${incEndY} Z`
+      );
+
+      // 反射光側の円弧終点
+      const refEndX = ORIGIN_X + arcRadius * Math.sin(rad);
+      const refEndY = ORIGIN_Y - arcRadius * Math.cos(rad);
+      refArc.setAttribute(
+        'd',
+        `M ${ORIGIN_X} ${ORIGIN_Y} L ${startX} ${startY} A ${arcRadius} ${arcRadius} 0 0 1 ${refEndX} ${refEndY} Z`
+      );
+
+      // ラベルを角度の二等分線方向（または見やすい位置）に配置
+      const halfRad = rad / 2;
+      const labelDist = angle <= 20 ? 225 : 195;
+      const offsetX = Math.max(105, labelDist * Math.sin(halfRad));
+      const offsetY = labelDist * Math.cos(halfRad);
+
+      incLabel.setAttribute('transform', `translate(${ORIGIN_X - offsetX}, ${ORIGIN_Y - offsetY})`);
+      refLabel.setAttribute('transform', `translate(${ORIGIN_X + offsetX}, ${ORIGIN_Y - offsetY})`);
+    }
+
+    // 状況に応じた学習ガイドメッセージの更新
+    function updateGuideMessages(angle) {
+      const guideText = document.getElementById('guideText');
+      const summaryCard = document.getElementById('summaryCard');
+
+      if (state.showAngles) {
+        guideText.textContent = `入射角 ${angle}° ＝ 反射角 ${angle}° ！ 光が反射するとき、2つの角はいつも同じ大きさになるよ。`;
+        summaryCard.className = 'bg-gradient-to-r from-rose-900/80 via-slate-800 to-amber-900/80 border-2 border-amber-400 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-center';
+        summaryCard.innerHTML = `
+          <div class="text-base lg:text-lg font-extrabold text-white text-center">
+            🎯 反射の法則：<span class="text-rose-300">入射角（${angle}°）</span> ＝ <span class="text-amber-300">反射角（${angle}°）</span>
+          </div>
+        `;
+      } else if (state.showProtractor && state.showNormal) {
+        guideText.textContent = `分度器の「0」の目盛り（垂直な線）から、左右の光までの角度を読み取ってみよう！`;
+        summaryCard.className = 'bg-slate-800 border-2 border-sky-400/70 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-between';
+        summaryCard.innerHTML = `
+          <div class="text-sm lg:text-base font-bold text-sky-200">
+            📐 分度器で角度がわかったら、「入射角・反射角を表示」をONにして答え合わせしよう！
+          </div>
+        `;
+      } else if (state.showNormal) {
+        guideText.textContent = `鏡に垂直な線（法線）を引いたよ！次は「分度器」を置いて角度をはかってみよう。`;
+        summaryCard.className = 'bg-slate-800 border-2 border-slate-700 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-between';
+        summaryCard.innerHTML = `
+          <div class="text-sm lg:text-base font-bold text-slate-200">
+            ⚠️ <span class="text-sky-300 font-extrabold">鏡に垂直な線</span>と光との間の角が入射角・反射角だよ！
+          </div>
+        `;
+      } else {
+        guideText.textContent = `レーザーポインターを動かすか、右のボタンで角度を変えて光の進み方を見よう！`;
+        summaryCard.className = 'bg-slate-800 border-2 border-slate-700 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-between';
+        summaryCard.innerHTML = `
+          <div class="text-sm lg:text-base font-bold text-slate-300">
+            💡 まずは「鏡に垂直な線（法線）」をONにしてみよう！
+          </div>
+        `;
+      }
+    }
+
+    // ==========================================
+    // 光の進行アニメーションループ
+    // ==========================================
+    function animationLoop() {
+      const rad = (state.angle * Math.PI) / 180;
+
+      // レーザー発射口の位置（ポインター中心から先端方向へ44px進んだ位置）
+      const startDist = POINTER_RADIUS - 44;
+      const startX = ORIGIN_X - startDist * Math.sin(rad);
+      const startY = ORIGIN_Y - startDist * Math.cos(rad);
+
+      // 反射光の終点（0°のときは重なって見づらくならないよう少しだけオフセット演出も加える）
+      const endX = ORIGIN_X + BEAM_RADIUS * Math.sin(rad);
+      const endY = ORIGIN_Y - BEAM_RADIUS * Math.cos(rad);
+
+      // 発射アニメーションの進行計算
+      if (state.isAnimatingBeam) {
+        const speed = state.slowMotion ? 0.018 : 0.055;
+        state.beamProgress += speed;
+        if (state.beamProgress >= 2.0) {
+          state.beamProgress = 2.0;
+          state.isAnimatingBeam = false;
+        }
+      }
+
+      // 入射光（0.0 -> 1.0）の描画座標
+      const incT = Math.min(1.0, state.beamProgress);
+      const curIncX = startX + (ORIGIN_X - startX) * incT;
+      const curIncY = startY + (ORIGIN_Y - startY) * incT;
+
+      const incGlow = document.getElementById('incidentBeamGlow');
+      const incCore = document.getElementById('incidentBeamCore');
+      incGlow.setAttribute('x1', startX);
+      incGlow.setAttribute('y1', startY);
+      incGlow.setAttribute('x2', curIncX);
+      incGlow.setAttribute('y2', curIncY);
+      incCore.setAttribute('x1', startX);
+      incCore.setAttribute('y1', startY);
+      incCore.setAttribute('x2', curIncX);
+      incCore.setAttribute('y2', curIncY);
+
+      // 鏡の衝突点の光エフェクト
+      const hitGlow = document.getElementById('hitPointGlow');
+      hitGlow.style.opacity = state.beamProgress >= 0.95 ? '1' : '0';
+
+      // 反射光（1.0 -> 2.0）の描画座標
+      const refT = Math.max(0.0, Math.min(1.0, state.beamProgress - 1.0));
+      // 0°のときは入射光と反射光の両方が見えるように4pxだけ横にずらす
+      const zeroOffset = state.angle === 0 ? 5 : 0;
+      const refStartX = ORIGIN_X + zeroOffset;
+      const curRefX = refStartX + (endX + zeroOffset - refStartX) * refT;
+      const curRefY = ORIGIN_Y + (endY - ORIGIN_Y) * refT;
+
+      const refGlow = document.getElementById('reflectionBeamGlow');
+      const refCore = document.getElementById('reflectionBeamCore');
+      if (refT > 0) {
+        refGlow.style.display = 'block';
+        refCore.style.display = 'block';
+        refGlow.setAttribute('x1', refStartX);
+        refGlow.setAttribute('y1', ORIGIN_Y);
+        refGlow.setAttribute('x2', curRefX);
+        refGlow.setAttribute('y2', curRefY);
+        refCore.setAttribute('x1', refStartX);
+        refCore.setAttribute('y1', ORIGIN_Y);
+        refCore.setAttribute('x2', curRefX);
+        refCore.setAttribute('y2', curRefY);
+      } else {
+        refGlow.style.display = 'none';
+        refCore.style.display = 'none';
+      }
+
+      // 光の線上を流れる進行方向の矢印（光の粒）を更新
+      updateMovingParticles(startX, startY, endX + zeroOffset, endY, refStartX, incT, refT);
+
+      requestAnimationFrame(animationLoop);
+    }
+
+    // 光の進む向きがひと目でわかる動く矢印・光球を描画
+    function updateMovingParticles(startX, startY, endX, endY, refStartX, incT, refT) {
+      const group = document.getElementById('movingParticlesGroup');
+      group.innerHTML = '';
+
+      const stepSpeed = state.slowMotion ? 0.004 : 0.011;
+      state.particleOffset = (state.particleOffset + stepSpeed) % 1.0;
+
+      const numParticles = 3;
+
+      // 入射光上の動く矢印（ポインター → 鏡）
+      for (let i = 0; i < numParticles; i++) {
+        const t = (state.particleOffset + i / numParticles) % 1.0;
+        if (t <= incT) {
+          const px = startX + (ORIGIN_X - startX) * t;
+          const py = startY + (ORIGIN_Y - startY) * t;
+          const angleDeg = 90 - state.angle;
+          group.appendChild(createArrowParticle(px, py, angleDeg, '#ffffff', '#f43f5e'));
+        }
+      }
+
+      // 反射光上の動く矢印（鏡 → 反射方向）
+      if (refT > 0) {
+        for (let i = 0; i < numParticles; i++) {
+          const t = (state.particleOffset + i / numParticles) % 1.0;
+          if (t <= refT) {
+            const px = refStartX + (endX - refStartX) * t;
+            const py = ORIGIN_Y + (endY - ORIGIN_Y) * t;
+            const angleDeg = -90 + state.angle;
+            group.appendChild(createArrowParticle(px, py, angleDeg, '#ffffff', '#f59e0b'));
+          }
+        }
+      }
+    }
+
+    function createArrowParticle(x, y, deg, fill, stroke) {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `translate(${x}, ${y}) rotate(${deg})`);
+
+      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      poly.setAttribute('points', '-9,-8 10,0 -9,8 -4,0');
+      poly.setAttribute('fill', fill);
+      poly.setAttribute('stroke', stroke);
+      poly.setAttribute('stroke-width', '2');
+      g.appendChild(poly);
+      return g;
+    }
+
+    // ==========================================
+    // iPadタッチ＆マウスドラッグ操作（10°単位スナップ）
+    // ==========================================
+    function initDragEvents() {
+      const svg = document.getElementById('simSvg');
+      const pointer = document.getElementById('laserPointerGroup');
+      let isDragging = false;
+
+      const startDrag = (e) => {
+        isDragging = true;
+        e.preventDefault();
+      };
+
+      const moveDrag = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        // SVG座標系に変換
+        const pt = svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+        // 入射点(ORIGIN_X, ORIGIN_Y)からの角度を計算
+        const dx = ORIGIN_X - svgP.x;
+        const dy = ORIGIN_Y - svgP.y;
+
+        if (dy <= 10) {
+          setAngle(80, false);
+          return;
+        }
+
+        let deg = (Math.atan2(dx, dy) * 180) / Math.PI;
+        deg = Math.max(0, Math.min(80, deg));
+        // 10°単位にカチッとスナップ
+        const snapped = Math.round(deg / 10) * 10;
+        if (snapped !== state.angle) {
+          setAngle(snapped, false);
+        }
+      };
+
+      const endDrag = () => {
+        if (isDragging) {
+          isDragging = false;
+        }
+      };
+
+      // ポインター本体およびキャンバス左半分でのタッチ操作に対応
+      pointer.addEventListener('mousedown', startDrag);
+      pointer.addEventListener('touchstart', startDrag, { passive: false });
+
+      window.addEventListener('mousemove', moveDrag);
+      window.addEventListener('touchmove', moveDrag, { passive: false });
+
+      window.addEventListener('mouseup', endDrag);
+      window.addEventListener('touchend', endDrag);
+    }
+  </script>
+</body>
+</html>
