@@ -88,7 +88,7 @@
     <!-- ワンポイント解説バナー -->
     <div id="guideMessage" class="bg-slate-900/90 border-2 border-amber-400/70 rounded-xl px-4 py-1.5 text-base lg:text-lg font-bold text-amber-200 flex items-center gap-2">
       <span>💡</span>
-      <span id="guideText">角度を決めたら、右上の「▶ 光を発射！」ボタンを押してみよう！</span>
+      <span id="guideText">レーザーの赤いボタンか、右上の「▶ 光を発射！」を押してみよう！</span>
     </div>
   </header>
 
@@ -301,17 +301,22 @@
             <line x1="-40" y1="-16" x2="-40" y2="16" stroke="#334155" stroke-width="4" />
             <line x1="-28" y1="-16" x2="-28" y2="16" stroke="#334155" stroke-width="4" />
             <line x1="-16" y1="-16" x2="-16" y2="16" stroke="#334155" stroke-width="4" />
-            <!-- 赤いスイッチボタン -->
-            <circle cx="0" cy="0" r="8" fill="#f43f5e" stroke="#ffffff" stroke-width="2" />
             <!-- 先端ノズル -->
             <path d="M 30 -12 L 46 -7 L 46 7 L 30 12 Z" fill="#dc2626" stroke="#ffffff" stroke-width="2" />
+            <!-- 赤いスイッチボタン（タップで光を発射） -->
+            <g id="pointerRedBtn" class="cursor-pointer">
+              <circle cx="0" cy="0" r="22" fill="transparent" />
+              <circle id="pointerBtnRing" cx="0" cy="0" r="14" fill="#f43f5e" opacity="0.4" class="animate-ping" />
+              <circle id="pointerBtnBody" cx="0" cy="0" r="11" fill="#e11d48" stroke="#ffffff" stroke-width="2.5" />
+              <circle cx="-3" cy="-3" r="3.5" fill="#fda4af" />
+            </g>
           </g>
         </g>
       </svg>
 
       <!-- 下部フローティングヒント -->
       <div class="absolute bottom-3 left-4 bg-slate-800/85 border border-slate-600 px-4 py-1.5 rounded-xl text-sm lg:text-base text-slate-300 font-bold">
-        👆 画面のレーザーポインターを直接ゆびで動かしても角度を変えられるよ！
+        👆 レーザーはゆびで動かせるよ！本体の<span class="text-rose-400 font-extrabold">赤いボタン</span>を押しても光が発射！
       </div>
     </section>
 
@@ -536,6 +541,8 @@
         state.beamProgress = 0.0;
         state.isAnimatingBeam = false;
         document.getElementById('btnFire').classList.add('animate-pulse');
+        const btnRing = document.getElementById('pointerBtnRing');
+        if (btnRing) btnRing.style.display = 'block';
       }
 
       updateUI();
@@ -546,6 +553,16 @@
       state.beamProgress = 0.001;
       state.isAnimatingBeam = true;
       document.getElementById('btnFire').classList.remove('animate-pulse');
+      const btnRing = document.getElementById('pointerBtnRing');
+      if (btnRing) btnRing.style.display = 'none';
+
+      // 赤いスイッチボタンを押したときの視覚フィードバック
+      const btnBody = document.getElementById('pointerBtnBody');
+      if (btnBody) {
+        btnBody.setAttribute('fill', '#fda4af');
+        setTimeout(() => btnBody.setAttribute('fill', '#e11d48'), 200);
+      }
+
       updateGuideMessages(state.angle);
     }
 
@@ -735,14 +752,14 @@
         `;
       } else {
         if (state.beamProgress === 0) {
-          guideText.textContent = `角度を決めたら、右上の「▶ 光を発射！」ボタンを押してみよう！`;
+          guideText.textContent = `レーザーの赤いボタンか、右上の「▶ 光を発射！」を押してみよう！`;
         } else {
           guideText.textContent = `光がはね返ったね！右の「鏡に垂直な線（法線）」をONにして角度を調べよう！`;
         }
         summaryCard.className = 'bg-slate-800 border-2 border-slate-700 rounded-2xl px-4 py-3 shadow-lg flex items-center justify-between';
         summaryCard.innerHTML = `
           <div class="text-sm lg:text-base font-bold text-slate-300">
-            💡 まずは「▶ 光を発射！」を押すか、「鏡に垂直な線（法線）」をONにしてみよう！
+            💡 レーザーの赤いボタンを押すか、「鏡に垂直な線（法線）」をONにしてみよう！
           </div>
         `;
       }
@@ -888,13 +905,21 @@
     // ==========================================
     // iPadタッチ＆マウスドラッグ操作（10°単位スナップ）
     // ==========================================
+    // iPadタッチ＆マウスドラッグ操作（10°単位スナップ＋赤いボタン発射対応）
+    // ==========================================
     function initDragEvents() {
       const svg = document.getElementById('simSvg');
       const pointer = document.getElementById('laserPointerGroup');
       let isDragging = false;
+      let isTapCandidate = false;
+      let startClientX = 0;
+      let startClientY = 0;
 
       const startDrag = (e) => {
         isDragging = true;
+        isTapCandidate = true;
+        startClientX = e.touches ? e.touches[0].clientX : e.clientX;
+        startClientY = e.touches ? e.touches[0].clientY : e.clientY;
         e.preventDefault();
       };
 
@@ -904,6 +929,13 @@
 
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        // タップかドラッグかを判定（12px以上動いたらドラッグとみなす）
+        const moveDist = Math.hypot(clientX - startClientX, clientY - startClientY);
+        if (moveDist < 12 && isTapCandidate) {
+          return;
+        }
+        isTapCandidate = false;
 
         // SVG座標系に変換
         const pt = svg.createSVGPoint();
@@ -931,7 +963,12 @@
 
       const endDrag = () => {
         if (isDragging) {
+          // ドラッグせずにその場でタップ（クリック）した場合は光を発射
+          if (isTapCandidate) {
+            replayBeamAnimation();
+          }
           isDragging = false;
+          isTapCandidate = false;
         }
       };
 
